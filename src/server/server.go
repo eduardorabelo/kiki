@@ -93,7 +93,8 @@ func handleLetter(c *gin.Context) (err error) {
 	}
 
 	// bind the payload
-	var p feed.Message
+
+	var p feed.LetterPost
 	err = c.BindJSON(&p)
 	if err != nil {
 		return
