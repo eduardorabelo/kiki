@@ -19,16 +19,16 @@ type KeyPair struct {
 	public  *[32]byte
 }
 
-func New() (kp KeyPair, err error) {
+func New() (kp KeyPair) {
 	kp = KeyPair{}
 	kp.Public, kp.Private = GenerateKeys()
 	kp.public, err = keyStringToBytes(kp.Public)
 	if err != nil {
-		return
+		panic(err)
 	}
 	kp.private, err = keyStringToBytes(kp.Private)
 	if err != nil {
-		return
+		panic(err)
 	}
 	return
 }

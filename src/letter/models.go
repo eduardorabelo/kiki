@@ -1,4 +1,4 @@
-package envelope
+package letter
 
 import (
 	"crypto/sha256"
@@ -11,8 +11,6 @@ import (
 	"github.com/schollz/kiki/src/keypair"
 	"github.com/schollz/kiki/src/logging"
 
-	"github.com/schollz/kiki/src/letter"
-	"github.com/schollz/kiki/src/person"
 	"github.com/schollz/kiki/src/symmetric"
 )
 
@@ -76,7 +74,7 @@ type Envelope struct {
 }
 
 // New creates an envelope and seals it for the specified recipients
-func New(l letter.Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e *Envelope, err error) {
+func New(l Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envelope, err error) {
 	logging.Log.Info("creating letter")
 	e = new(Envelope)
 
@@ -129,7 +127,7 @@ func New(l letter.Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e 
 }
 
 // Unseal will determine the content of the letter using the identities provided
-func (e *Envelope) Unseal(keysToTry []*person.Person, regionKey *person.Person) (err error) {
+func (e Envelope) Unseal(keysToTry []*person.Person, regionKey *person.Person) (err error) {
 	err = e.unseal(keysToTry, regionKey)
 	if err != nil {
 		e.Seal()
@@ -137,7 +135,7 @@ func (e *Envelope) Unseal(keysToTry []*person.Person, regionKey *person.Person) 
 	return
 }
 
-func (e *Envelope) unseal(keysToTry []*person.Person, regionKey *person.Person) (err error) {
+func (e Envelope) unseal(keysToTry []*person.Person, regionKey *person.Person) (err error) {
 	// First validate the letter
 	err = e.Validate(regionKey)
 	if err != nil {
@@ -189,7 +187,7 @@ func (e *Envelope) unseal(keysToTry []*person.Person, regionKey *person.Person) 
 	return
 }
 
-func (e *Envelope) Validate(regionKey *person.Person) (err error) {
+func (e Envelope) Validate(regionKey *person.Person) (err error) {
 	encryptedPublicKey, err := base64.URLEncoding.DecodeString(e.Signature)
 	if err != nil {
 		return
