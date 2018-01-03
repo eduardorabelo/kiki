@@ -8,12 +8,34 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/schollz/kiki/src/keypair"
 	"github.com/schollz/kiki/src/logging"
 
 	"github.com/schollz/kiki/src/letter"
 	"github.com/schollz/kiki/src/person"
 	"github.com/schollz/kiki/src/symmetric"
 )
+
+// Letter specifies the content being transfered to the self, or other users. The Letter has a purpose - either to "share" or "assign". You can "share" posts  or images. You assign things like follows, likes, profile names, etc.
+type Letter struct {
+	// Purpose specifies the purpose of letter. Currently the purposes are:
+	// "assign-X" - used to assign public data for reputation purposes (likes, follows, channel subscriptions, settting profile images and text and names)
+	// "share-X" - used to share content either "post" or "image/png"/"image/jpg"
+	Purpose string `json:"purpose"`
+	// To is a list of who the letter is addressed to: "public", "friends", "self" or the public key of any person
+	To []string `json:"to"`
+	// Content is is the content of the letter (base64 encoded image, text, or HTML)
+	Content string `json:"content,omitempty"`
+
+	// Replaces is the ID that this letter will replace if it is opened
+	Replaces string `json:"replaces,omitempty"`
+
+	// Things used for "share-post"
+	// Channels is a list of the channels to put the letter in
+	Channels []string `json:"channels,omitempty"`
+	// ReplyTo is the ID of the post being responded to
+	ReplyTo string `json:"reply_to,omitempty"`
+}
 
 // Envelope is the sealed letter to be transfered among carriers
 type Envelope struct {
@@ -24,7 +46,7 @@ type Envelope struct {
 	// Timestamp is the time at which the envelope was created
 	Timestamp time.Time `json:"timestamp",storm:"index"`
 	// Sender is public key of the sender
-	Sender *person.Person `json:"sender", storm:"index"`
+	Sender keypair.KeyPair `json:"sender", storm:"index"`
 	// Signature is the public key of the sender encrypted by
 	// the Sender private key, against the public Region key
 	// to authenticate sender. I.e., Sender == Decrypt(Signature) must be true.
@@ -32,9 +54,9 @@ type Envelope struct {
 	// I.e., if a Region key is not able to decrypt it, then it is meant for another Region
 	// and would be deleted.
 	Signature string `json:"signature"`
-	// Recipients is list of encypted passphrase (used to encrypt the Content)
+	// SealedRecipients is list of encypted passphrase (used to encrypt the Content)
 	// encrypted against each of the public keys of the recipients.
-	Recipients []string `json:"recipients"`
+	SealedRecipients []string `json:"sealed_recipients"`
 	// SealedLetter contains the encryoted and compressed letter,
 	// encoded as base64 string
 	SealedLetter string `json:"sealed_letter,omitempty"`
@@ -47,30 +69,20 @@ type Envelope struct {
 	// variable is set and the SealedLetter is set to "" (deleted). This will
 	// then be saved in a bucket for unsealed letters. When the letter remains
 	// sealed then this Letter is set to nil.
-	Letter *letter.Letter `json:"letter,omitempty"`
+	Letter Letter `json:"letter,omitempty"`
 	// Opened is a variable set to true if the Letter is opened, to make
 	// it easier to index the opened/unopened letters in the database.false
 	Opened bool `json:"opened"`
-	// DeterminedRecipients are the list of recipients, decoded after unsealing a letter
-	DeterminedRecipients []string `json:"determined_recipients,omitempty"`
-}
-
-// Seal will remove any identifying or confidential information
-func (e *Envelope) Seal() {
-	e.Letter = new(letter.Letter)
-	e.Opened = false
-	e.DeterminedRecipients = []string{}
 }
 
 // New creates an envelope and seals it for the specified recipients
-func New(l *letter.Letter, sender *person.Person, recipients []*person.Person, regionkey *person.Person) (e *Envelope, err error) {
+func New(l letter.Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e *Envelope, err error) {
 	logging.Log.Info("creating letter")
 	e = new(Envelope)
 
 	// Create ID (hash of any public key + hash of any content)
 	h := sha256.New()
 	h.Write([]byte(sender.Public()))
-	h.Write([]byte(l.Base64Image))
 	h.Write([]byte(l.Text))
 	h.Write([]byte(l.AssignmentValue))
 	h.Write([]byte(l.Replaces))
