@@ -114,7 +114,7 @@ func (d *Database) AddEnvelope(e letter.Envelope) (err error) {
 // GetEnvelopeFromID returns a single envelope from its ID
 func (d *Database) GetEnvelopeFromID(id string) (e letter.Envelope, err error) {
 	var es []letter.Envelope
-	es, err = d.GetAllFromPreparedQuery("SELECT * FROM letters WHERE id = ?", id)
+	es, err = d.getAllFromPreparedQuery("SELECT * FROM letters WHERE id = ?", id)
 	if err != nil {
 		err = errors.Wrap(err, "GetEnvelopeFromID("+id+")")
 	} else {
@@ -123,11 +123,20 @@ func (d *Database) GetEnvelopeFromID(id string) (e letter.Envelope, err error) {
 	return
 }
 
-func (d *Database) GetAllFromQuery(query string) (s []letter.Envelope, err error) {
+// GetAllEnvelopes returns all envelopes determined by whether they are opened
+func (d *Database) GetAllEnvelopes(opened bool) (e []letter.Envelope, err error) {
+	if opened {
+		return d.getAllFromQuery("SELECT * FROM letters WHERE opened == 1")
+	} else {
+		return d.getAllFromQuery("SELECT * FROM letters WHERE opened == 0")
+	}
+}
+
+func (d *Database) getAllFromQuery(query string) (s []letter.Envelope, err error) {
 	log.Debug(query)
 	rows, err := d.db.Query(query)
 	if err != nil {
-		err = errors.Wrap(err, "GetAllFromQuery")
+		err = errors.Wrap(err, "getAllFromQuery")
 		return
 	}
 	defer rows.Close()
@@ -140,8 +149,8 @@ func (d *Database) GetAllFromQuery(query string) (s []letter.Envelope, err error
 	return
 }
 
-// GetAllFromPreparedQuery
-func (d *Database) GetAllFromPreparedQuery(query string, args ...interface{}) (s []letter.Envelope, err error) {
+// getAllFromPreparedQuery
+func (d *Database) getAllFromPreparedQuery(query string, args ...interface{}) (s []letter.Envelope, err error) {
 	// prepare statement
 	stmt, err := d.db.Prepare(query)
 	if err != nil {
