@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/schollz/kiki/src/feed"
+	"github.com/schollz/kiki/src/letter"
 	"github.com/schollz/kiki/src/logging"
 	// "github.com/toorop/gin-logrus"
 )
@@ -93,13 +94,13 @@ func handleLetter(c *gin.Context) (err error) {
 	}
 
 	// bind the payload
-
-	var p feed.LetterPost
+	var p letter.Letter
 	err = c.BindJSON(&p)
 	if err != nil {
 		return
 	}
-	return p.Post()
+	err = letter.Process()
+	return
 }
 
 func readFormFile(file *multipart.FileHeader) (data []byte, err error) {

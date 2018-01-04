@@ -19,9 +19,9 @@ type Letter struct {
 	// Purpose specifies the purpose of letter. Currently the purposes are:
 	// "assign-X" - used to assign public data for reputation purposes (likes, follows, channel subscriptions, settting profile images and text and names)
 	// "share-X" - used to share content either "post" or "image/png"/"image/jpg"
-	Purpose string `json:"purpose"`
+	Purpose string `json:"purpose,omitempty"`
 	// To is a list of who the letter is addressed to: "public", "friends", "self" or the public key of any person
-	To []string `json:"to"`
+	To []string `json:"to,omitempty"`
 	// Content is is the content of the letter (base64 encoded image, text, or HTML)
 	Content string `json:"content,omitempty"`
 
@@ -99,13 +99,18 @@ func (l Letter) Seal(sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envel
 	}
 	e.SealedLetter = base64.URLEncoding.EncodeToString(encryptedLetter)
 
-	// the sender should always be open their own letter, so they should
-	// always be a recipient
-	recipients := []keypair.KeyPair{}
-	recipients = append(recipients, sender)
-	e.SealedRecipients = make([]string, len(recipients))
+	// generate a list of keypairs for each public key of the recipients in letter.To
+	recipients := make([]keypair.KeyPair, len(l.To)+1)
+	recipients[0] = sender
+	for i, publicKeyOfRecipient := range l.To {
+		recipients[i+1], err = keypair.FromPublic(publicKeyOfRecipient)
+		if err != nil {
+			return
+		}
+	}
 
 	// For each recipient, generate a key-encrypted passphrase
+	e.SealedRecipients = make([]string, len(recipients))
 	for i, recipient := range recipients {
 		encryptedSecret, err2 := sender.Encrypt(secretKey[:], recipient)
 		if err2 != nil {
@@ -114,7 +119,6 @@ func (l Letter) Seal(sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envel
 		}
 		e.SealedRecipients[i] = base64.URLEncoding.EncodeToString(encryptedSecret)
 	}
-	e.Opened = false
 
 	// sign the letter by encrypting the public key against the region key
 	signatureEncrypted, err := sender.Encrypt([]byte(sender.Public), regionkey)
@@ -122,6 +126,10 @@ func (l Letter) Seal(sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envel
 		return
 	}
 	e.Signature = base64.URLEncoding.EncodeToString(signatureEncrypted)
+
+	// Remove the letter information
+	e.Opened = false
+	e.Letter = Letter{}
 
 	return
 }

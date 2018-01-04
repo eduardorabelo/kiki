@@ -68,8 +68,12 @@ func FromPublic(public string) (kp KeyPair, err error) {
 
 func (kp KeyPair) MarshalJSON() ([]byte, error) {
 	buffer := bytes.NewBufferString("{")
-	buffer.WriteString(fmt.Sprintf("\"%s\":\"%s\",", "public", kp.Public))
-	buffer.WriteString(fmt.Sprintf("\"%s\":\"%s\"", "private", kp.Private))
+	if kp.Private == "" {
+		buffer.WriteString(fmt.Sprintf("\"%s\":\"%s\"", "public", kp.Public))
+	} else {
+		buffer.WriteString(fmt.Sprintf("\"%s\":\"%s\",", "public", kp.Public))
+		buffer.WriteString(fmt.Sprintf("\"%s\":\"%s\"", "private", kp.Private))
+	}
 	buffer.WriteString("}")
 	return buffer.Bytes(), nil
 }
