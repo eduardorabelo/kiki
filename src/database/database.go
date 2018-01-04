@@ -7,6 +7,7 @@ import (
 	"path"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/schollz/kiki/src/logging"
 	flock "github.com/theckman/go-flock"
@@ -104,7 +105,7 @@ func (d *Database) MakeTables() (err error) {
 		err = errors.Wrap(err, "MakeTables")
 		return
 	}
-	sqlStmt = `create index keystore_idx on keystore(key);`
+	sqlStmt = `create index keystore_idx on keystore(bucket_key);`
 	_, err = d.db.Exec(sqlStmt)
 	if err != nil {
 		err = errors.Wrap(err, "MakeTables")

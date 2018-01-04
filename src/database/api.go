@@ -4,19 +4,20 @@ import (
 	"database/sql"
 	"encoding/json"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/schollz/kiki/src/letter"
 )
 
 // Get will retrieve the value associated with a key.
-func (d *Database) Get(key string, v interface{}) (err error) {
-	stmt, err := d.db.Prepare("select value from keystore where key = ?")
+func (d *Database) Get(bucket, key string, v interface{}) (err error) {
+	stmt, err := d.db.Prepare("select value from keystore where bucket_key = ?")
 	if err != nil {
 		return errors.Wrap(err, "problem preparing SQL")
 	}
 	defer stmt.Close()
 	var result string
-	err = stmt.QueryRow(key).Scan(&result)
+	err = stmt.QueryRow(bucket + "/" + key).Scan(&result)
 	if err != nil {
 		return errors.Wrap(err, "problem getting key")
 	}
@@ -29,7 +30,7 @@ func (d *Database) Get(key string, v interface{}) (err error) {
 }
 
 // Set will set a value in the database, when using it like a keystore.
-func (d *Database) Set(key string, value interface{}) (err error) {
+func (d *Database) Set(bucket, key string, value interface{}) (err error) {
 	var b []byte
 	b, err = json.Marshal(value)
 	if err != nil {
@@ -39,13 +40,13 @@ func (d *Database) Set(key string, value interface{}) (err error) {
 	if err != nil {
 		return errors.Wrap(err, "Set")
 	}
-	stmt, err := tx.Prepare("insert or replace into keystore(key,value) values (?, ?)")
+	stmt, err := tx.Prepare("insert or replace into keystore(bucket_key,value) values (?, ?)")
 	if err != nil {
 		return errors.Wrap(err, "Set")
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(key, string(b))
+	_, err = stmt.Exec(bucket+"/"+key, string(b))
 	if err != nil {
 		return errors.Wrap(err, "Set")
 	}
@@ -55,6 +56,57 @@ func (d *Database) Set(key string, value interface{}) (err error) {
 		return errors.Wrap(err, "Set")
 	}
 
+	return
+}
+
+func (d *Database) AddEnevelope(e letter.Envelope) (err error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return
+	}
+	var opened int
+	// marshaled things
+	var mSender, mSealedRecipients, mTo, mChannels string
+	if e.Opened {
+		opened = 1
+	} else {
+		opened = 0
+	}
+	var b []byte
+	b, err = json.Marshal(e.Sender)
+	if err != nil {
+		return errors.Wrap(err, "problem marshaling Sender")
+	}
+	mSender = string(b)
+
+	b, err = json.Marshal(e.SealedRecipients)
+	if err != nil {
+		return errors.Wrap(err, "problem marshaling SealedRecipients")
+	}
+	mSealedRecipients = string(b)
+
+	b, err = json.Marshal(e.Letter.To)
+	if err != nil {
+		return errors.Wrap(err, "problem marshaling To")
+	}
+	mTo = string(b)
+
+	b, err = json.Marshal(e.Letter.Channels)
+	if err != nil {
+		return errors.Wrap(err, "problem marshaling Channels")
+	}
+	mChannels = string(b)
+
+	stmt, err := tx.Prepare("insert into letters(id,time,sender,signature,sealed_recipients,sealed_letter,opened,letter_purpose,letter_to,letter_content,letter_replaces,letter_channels,letter_replyto) values(?,?,?,?,?,?,?,?,?,?,?,?)")
+	if err != nil {
+		return
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(e.ID, e.Timestamp, mSender, e.Signature, mSealedRecipients, e.SealedLetter, opened, e.Letter.Purpose, mTo, e.Letter.Content, e.Letter.Replaces, mChannels, e.Letter.ReplyTo)
+	if err != nil {
+		return
+	}
+	tx.Commit()
 	return
 }
 
@@ -106,10 +158,10 @@ func (d *Database) getRows(rows *sql.Rows) (s []letter.Envelope, err error) {
 		e.Letter = letter.Letter{}
 		var opened int
 		// marshaled things
-		var mSender, mSealdedRecipients, mTo, mChannels string
-		err = rows.Scan(&e.ID, &e.Timestamp, &mSender, &e.Signature, &mSealdedRecipients, &e.SealedLetter, &opened, &e.Letter.Purpose, &mTo, &e.Letter.Content, &e.Letter.Replaces, &mChannels, &e.Letter.ReplyTo)
+		var mSender, mSealedRecipients, mTo, mChannels string
+		err = rows.Scan(&e.ID, &e.Timestamp, &mSender, &e.Signature, &mSealedRecipients, &e.SealedLetter, &opened, &e.Letter.Purpose, &mTo, &e.Letter.Content, &e.Letter.Replaces, &mChannels, &e.Letter.ReplyTo)
 		json.Unmarshal([]byte(mSender), &e.Sender)
-		json.Unmarshal([]byte(mSealdedRecipients), &e.SealedRecipients)
+		json.Unmarshal([]byte(mSealedRecipients), &e.SealedRecipients)
 		json.Unmarshal([]byte(mTo), &e.Letter.To)
 		json.Unmarshal([]byte(mChannels), &e.Letter.Channels)
 
