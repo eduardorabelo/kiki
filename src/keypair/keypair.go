@@ -20,6 +20,7 @@ type KeyPair struct {
 }
 
 func New() (kp KeyPair) {
+	var err error
 	kp = KeyPair{}
 	kp.Public, kp.Private = GenerateKeys()
 	kp.public, err = keyStringToBytes(kp.Public)

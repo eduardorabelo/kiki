@@ -76,13 +76,12 @@ type Envelope struct {
 // New creates an envelope and seals it for the specified recipients
 func New(l Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envelope, err error) {
 	logging.Log.Info("creating letter")
-	e = new(Envelope)
+	e = Envelope{}
 
 	// Create ID (hash of any public key + hash of any content)
 	h := sha256.New()
-	h.Write([]byte(sender.Public()))
-	h.Write([]byte(l.Text))
-	h.Write([]byte(l.AssignmentValue))
+	h.Write([]byte(sender.Public))
+	h.Write([]byte(l.Content))
 	h.Write([]byte(l.Replaces))
 	h.Write([]byte(l.ReplyTo))
 	e.ID = fmt.Sprintf("%x", h.Sum(nil))
@@ -102,22 +101,23 @@ func New(l Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envelop
 
 	// the sender should always be open their own letter, so they should
 	// always be a recipient
+	recipients := []keypair.KeyPair{}
 	recipients = append(recipients, sender)
-	e.Recipients = make([]string, len(recipients))
+	e.SealedRecipients = make([]string, len(recipients))
 
 	// For each recipient, generate a key-encrypted passphrase
 	for i, recipient := range recipients {
-		encryptedSecret, err2 := sender.Keys.Encrypt(secretKey[:], recipient.Keys)
+		encryptedSecret, err2 := sender.Encrypt(secretKey[:], recipient)
 		if err2 != nil {
 			err = err2
 			return
 		}
-		e.Recipients[i] = base64.URLEncoding.EncodeToString(encryptedSecret)
+		e.SealedRecipients[i] = base64.URLEncoding.EncodeToString(encryptedSecret)
 	}
 	e.Opened = false
 
 	// sign the letter by encrypting the public key against the region key
-	signatureEncrypted, err := sender.Keys.Encrypt([]byte(sender.Public()), regionkey.Keys)
+	signatureEncrypted, err := sender.Encrypt([]byte(sender.Public), regionkey)
 	if err != nil {
 		return
 	}
@@ -127,15 +127,16 @@ func New(l Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envelop
 }
 
 // Unseal will determine the content of the letter using the identities provided
-func (e Envelope) Unseal(keysToTry []*person.Person, regionKey *person.Person) (err error) {
-	err = e.unseal(keysToTry, regionKey)
+func (e Envelope) Unseal(keysToTry []keypair.KeyPair, regionKey keypair.KeyPair) (Envelope, error) {
+	e2, err := e.unseal(keysToTry, regionKey)
 	if err != nil {
-		e.Seal()
+		return e, err
 	}
-	return
+	return e2, nil
 }
 
-func (e Envelope) unseal(keysToTry []*person.Person, regionKey *person.Person) (err error) {
+func (e2 Envelope) unseal(keysToTry []keypair.KeyPair, regionKey keypair.KeyPair) (e Envelope, err error) {
+	e = e2
 	// First validate the letter
 	err = e.Validate(regionKey)
 	if err != nil {
@@ -145,19 +146,18 @@ func (e Envelope) unseal(keysToTry []*person.Person, regionKey *person.Person) (
 	var secretPassphrase [32]byte
 	foundPassphrase := false
 	for _, keyToTry := range keysToTry {
-		for _, recipient := range e.Recipients {
+		for _, recipient := range e.SealedRecipients {
 			var err2 error
 			encryptedSecret, err2 := base64.URLEncoding.DecodeString(recipient)
 			if err2 != nil {
 				err = errors.Wrap(err2, "recipients are corrupted")
 				return
 			}
-			decryptedSecretPassphrase, err := keyToTry.Keys.Decrypt(encryptedSecret, e.Sender.Keys)
+			decryptedSecretPassphrase, err := keyToTry.Decrypt(encryptedSecret, e.Sender)
 			if err == nil {
 				foundPassphrase = true
-				// add the known recipient to the list
-				e.DeterminedRecipients = append(e.DeterminedRecipients, keyToTry.Public())
 				copy(secretPassphrase[:], decryptedSecretPassphrase[:32])
+				break
 			}
 		}
 	}
@@ -187,16 +187,16 @@ func (e Envelope) unseal(keysToTry []*person.Person, regionKey *person.Person) (
 	return
 }
 
-func (e Envelope) Validate(regionKey *person.Person) (err error) {
+func (e Envelope) Validate(regionKey keypair.KeyPair) (err error) {
 	encryptedPublicKey, err := base64.URLEncoding.DecodeString(e.Signature)
 	if err != nil {
 		return
 	}
-	decryptedPublicKey, err := regionKey.Keys.Decrypt(encryptedPublicKey, e.Sender.Keys)
+	decryptedPublicKey, err := regionKey.Decrypt(encryptedPublicKey, e.Sender)
 	if err != nil {
 		return
 	}
-	if string(decryptedPublicKey) != e.Sender.Public() {
+	if string(decryptedPublicKey) != e.Sender.Public {
 		return errors.New("validation failed, not equal")
 	}
 	return

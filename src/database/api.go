@@ -1,0 +1,131 @@
+package database
+
+import (
+	"database/sql"
+	"encoding/json"
+
+	"github.com/pkg/errors"
+	"github.com/schollz/kiki/src/letter"
+)
+
+// Get will retrieve the value associated with a key.
+func (d *Database) Get(key string, v interface{}) (err error) {
+	stmt, err := d.db.Prepare("select value from keystore where key = ?")
+	if err != nil {
+		return errors.Wrap(err, "problem preparing SQL")
+	}
+	defer stmt.Close()
+	var result string
+	err = stmt.QueryRow(key).Scan(&result)
+	if err != nil {
+		return errors.Wrap(err, "problem getting key")
+	}
+
+	err = json.Unmarshal([]byte(result), &v)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// Set will set a value in the database, when using it like a keystore.
+func (d *Database) Set(key string, value interface{}) (err error) {
+	var b []byte
+	b, err = json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	tx, err := d.db.Begin()
+	if err != nil {
+		return errors.Wrap(err, "Set")
+	}
+	stmt, err := tx.Prepare("insert or replace into keystore(key,value) values (?, ?)")
+	if err != nil {
+		return errors.Wrap(err, "Set")
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(key, string(b))
+	if err != nil {
+		return errors.Wrap(err, "Set")
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return errors.Wrap(err, "Set")
+	}
+
+	return
+}
+
+func (d *Database) GetAllFromQuery(query string) (s []letter.Envelope, err error) {
+	log.Debug(query)
+	rows, err := d.db.Query(query)
+	if err != nil {
+		err = errors.Wrap(err, "GetAllFromQuery")
+		return
+	}
+	defer rows.Close()
+
+	// parse rows
+	s, err = d.getRows(rows)
+	if err != nil {
+		err = errors.Wrap(err, query)
+	}
+	return
+}
+
+// GetAllFromPreparedQuery
+func (d *Database) GetAllFromPreparedQuery(query string, args ...interface{}) (s []letter.Envelope, err error) {
+	// prepare statement
+	stmt, err := d.db.Prepare(query)
+	if err != nil {
+		err = errors.Wrap(err, query)
+		return
+	}
+	defer stmt.Close()
+	rows, err := stmt.Query(args...)
+	if err != nil {
+		err = errors.Wrap(err, query)
+		return
+	}
+	defer rows.Close()
+	s, err = d.getRows(rows)
+	if err != nil {
+		err = errors.Wrap(err, query)
+	}
+	return
+}
+
+func (d *Database) getRows(rows *sql.Rows) (s []letter.Envelope, err error) {
+	s = make([]letter.Envelope, 100000)
+	sI := 0
+	// loop through rows
+	for rows.Next() {
+		var e letter.Envelope
+		e.Letter = letter.Letter{}
+		var opened int
+		// marshaled things
+		var mSender, mSealdedRecipients, mTo, mChannels string
+		err = rows.Scan(&e.ID, &e.Timestamp, &mSender, &e.Signature, &mSealdedRecipients, &e.SealedLetter, &opened, &e.Letter.Purpose, &mTo, &e.Letter.Content, &e.Letter.Replaces, &mChannels, &e.Letter.ReplyTo)
+		json.Unmarshal([]byte(mSender), &e.Sender)
+		json.Unmarshal([]byte(mSealdedRecipients), &e.SealedRecipients)
+		json.Unmarshal([]byte(mTo), &e.Letter.To)
+		json.Unmarshal([]byte(mChannels), &e.Letter.Channels)
+
+		e.Opened = opened == 1
+		if err != nil {
+			err = errors.Wrap(err, "getRows")
+			return
+		}
+
+		s[sI] = e
+		sI++
+	}
+	s = s[:sI]
+	err = rows.Err()
+	if err != nil {
+		err = errors.Wrap(err, "getRows")
+	}
+	return
+}
