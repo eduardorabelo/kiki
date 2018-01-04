@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/schollz/kiki/src/letter"
+	"github.com/schollz/kiki/src/purpose"
 
 	"github.com/pkg/errors"
 	"github.com/schollz/kiki/src/database"
@@ -107,6 +108,29 @@ func Setup() (err error) {
 	}
 
 	err = RegenerateFeed()
+	return
+}
+
+// ProcessLetter will determine where to put the letter
+func (l Letter) ProcessLetter(l Letter) (err error) {
+	if !purpose.Valid(l.Purpose) {
+		err = errors.New("invalid purpose")
+		return
+	}
+
+	// rewrite the letter.To array so that it contains
+	// public keys
+	newTo := []string{}
+	for _, to := range l.To {
+		switch to {
+		case "public":
+			newTo = append(newTo, RegionKey)
+
+		}
+	}
+	if l.To == "public" {
+
+	}
 	return
 }
 
