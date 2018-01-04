@@ -4,11 +4,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/schollz/kiki/src/keypair"
+	"github.com/schollz/kiki/src/letter"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestOpenClose(t *testing.T) {
-	os.Remove("kiki.db")
+	os.Remove("kiki.sqlite3.db")
 	db, err := Open()
 	assert.Nil(t, err)
 	err = db.Close()
@@ -16,6 +18,7 @@ func TestOpenClose(t *testing.T) {
 }
 
 func TestKeyStore(t *testing.T) {
+	os.Remove("kiki.sqlite3.db")
 	type A struct {
 		B int
 		C string
@@ -24,7 +27,6 @@ func TestKeyStore(t *testing.T) {
 		B: 3,
 		C: "hi",
 	}
-	os.Remove("kiki.db")
 	db, err := Open()
 	assert.Nil(t, err)
 	defer db.Close()
@@ -35,6 +37,29 @@ func TestKeyStore(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, a, a2)
 }
-func TestAddLetter(t *testing.T) {
+func TestAddGetLetter(t *testing.T) {
+	os.Remove("kiki.sqlite3.db")
 
+	l := letter.Letter{
+		Purpose: "share-text",
+		Content: "hello, world",
+	}
+	sender := keypair.New()
+	region := keypair.New()
+	e, err := l.Seal(sender, region)
+	assert.Nil(t, err)
+
+	db, err := Open()
+	assert.Nil(t, err)
+	defer db.Close()
+	err = db.AddEnvelope(e)
+	assert.Nil(t, err)
+	err = db.AddEnvelope(e)
+	assert.Nil(t, err)
+
+	e2, err := db.GetEnvelopeFromID(e.ID)
+	assert.Nil(t, err)
+	assert.Equal(t, e.ID, e2.ID)
+	assert.Equal(t, e.Letter.Content, e2.Letter.Content)
+	assert.Equal(t, e.SealedRecipients, e2.SealedRecipients)
 }

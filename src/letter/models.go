@@ -73,8 +73,8 @@ type Envelope struct {
 	Opened bool `json:"opened"`
 }
 
-// New creates an envelope and seals it for the specified recipients
-func New(l Letter, sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envelope, err error) {
+// Seal creates an envelope and seals it for the specified recipients
+func (l Letter) Seal(sender keypair.KeyPair, regionkey keypair.KeyPair) (e Envelope, err error) {
 	logging.Log.Info("creating letter")
 	e = Envelope{}
 

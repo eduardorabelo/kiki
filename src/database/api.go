@@ -59,7 +59,8 @@ func (d *Database) Set(bucket, key string, value interface{}) (err error) {
 	return
 }
 
-func (d *Database) AddEnevelope(e letter.Envelope) (err error) {
+// AddEnvelope will add or replace an envelope
+func (d *Database) AddEnvelope(e letter.Envelope) (err error) {
 	tx, err := d.db.Begin()
 	if err != nil {
 		return
@@ -97,7 +98,7 @@ func (d *Database) AddEnevelope(e letter.Envelope) (err error) {
 	}
 	mChannels = string(b)
 
-	stmt, err := tx.Prepare("insert into letters(id,time,sender,signature,sealed_recipients,sealed_letter,opened,letter_purpose,letter_to,letter_content,letter_replaces,letter_channels,letter_replyto) values(?,?,?,?,?,?,?,?,?,?,?,?)")
+	stmt, err := tx.Prepare("insert or replace into letters(id,time,sender,signature,sealed_recipients,sealed_letter,opened,letter_purpose,letter_to,letter_content,letter_replaces,letter_channels,letter_replyto) values(?,?,?,?,?,?,?,?,?,?,?,?,?)")
 	if err != nil {
 		return
 	}
@@ -107,6 +108,18 @@ func (d *Database) AddEnevelope(e letter.Envelope) (err error) {
 		return
 	}
 	tx.Commit()
+	return
+}
+
+// GetEnvelopeFromID returns a single envelope from its ID
+func (d *Database) GetEnvelopeFromID(id string) (e letter.Envelope, err error) {
+	var es []letter.Envelope
+	es, err = d.GetAllFromPreparedQuery("SELECT * FROM letters WHERE id = ?", id)
+	if err != nil {
+		err = errors.Wrap(err, "GetEnvelopeFromID("+id+")")
+	} else {
+		e = es[0]
+	}
 	return
 }
 
